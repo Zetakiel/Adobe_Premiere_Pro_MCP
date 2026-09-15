@@ -1231,6 +1231,11 @@ export class PremiereProBridge implements PremiereProTransport {
     let lastParseError: Error | null = null;
     let lastRawResponse = '';
     let parseAttempts = 0;
+    // The panel writes its heartbeat from the same JS thread that waits on evalScript, so
+    // the heartbeat stops while Premiere runs a long script. A heartbeat that was live
+    // after this command was published and then went quiet means the panel took the
+    // command and is busy with it, not that it went away.
+    let sawLiveHeartbeat = false;
 
     while (Date.now() - startTime < timeout) {
       let raw: string | undefined;
@@ -1256,14 +1261,18 @@ export class PremiereProBridge implements PremiereProTransport {
       // missing or stale after a couple of seconds, Premiere is not listening —
       // waiting the remaining minute just makes the caller sit on a dead socket.
       // A fresh heartbeat with started:true means the panel has the command and
-      // we should wait out the real timeout (evalScript can be slow).
+      // we should wait out the real timeout (evalScript can be slow). Once seen, a
+      // stale heartbeat is the panel blocked inside evalScript: failing then reported
+      // a command that was still running, and a retry stacked a second script on it.
       if (Date.now() - startTime >= BRIDGE_PANEL_ABSENT_MS) {
         const beat = await this.readHeartbeat();
-        if (!beat) {
+        if (beat) {
+          if (!beat.started) {
+            throw new Error(BRIDGE_NOT_STARTED);
+          }
+          sawLiveHeartbeat = true;
+        } else if (!sawLiveHeartbeat) {
           throw new Error(BRIDGE_PANEL_NOT_RUNNING);
-        }
-        if (!beat.started) {
-          throw new Error(BRIDGE_NOT_STARTED);
         }
       }
 
