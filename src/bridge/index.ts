@@ -11,7 +11,7 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'fs';
 import { extname, join, posix as pathPosix, win32 as pathWin32 } from 'path';
-import { createSecureTempDir, validateFilePath } from '../utils/security.js';
+import { resolveBridgeTempDir, validateFilePath } from '../utils/security.js';
 import type { EnsureHostOptions, EnsureHostResult, PremiereProTransport } from './types.js';
 
 const execFileAsync = promisify(execFile);
@@ -856,21 +856,16 @@ export class PremiereProBridge implements PremiereProTransport {
   private logger: Logger;
   private communicationMethod: 'uxp' | 'extendscript' | 'file';
   private tempDir: string;
-  private readonly usesExternalTempDir: boolean;
   private uxpProcess?: ChildProcess;
   private isInitialized = false;
-  private sessionId: string;
   private premiereInstallPath: string | null = null;
   private premiereLaunchPath: string | null = null;
 
   constructor() {
     this.logger = new Logger('PremiereProBridge');
     this.communicationMethod = 'file'; // Default to file-based communication
-    this.sessionId = randomUUID();
-    // Use PREMIERE_TEMP_DIR if set (same path as UXP plugin "Temp Directory"), else session-specific
-    const envDir = process.env.PREMIERE_TEMP_DIR;
-    this.usesExternalTempDir = Boolean(envDir);
-    this.tempDir = envDir ? envDir.replace(/\/$/, '') : createSecureTempDir(this.sessionId);
+    // Same directory the CEP panel polls, so the two meet without extra config.
+    this.tempDir = resolveBridgeTempDir();
   }
 
   async initialize(): Promise<void> {
@@ -2194,17 +2189,8 @@ export class PremiereProBridge implements PremiereProTransport {
     if (this.uxpProcess) {
       this.uxpProcess.kill();
     }
-    
-    // Only remove temp dirs created by this server. The shared bridge directory is
-    // configured externally and should persist across restarts.
-    try {
-      if (!this.usesExternalTempDir) {
-        await fs.rm(this.tempDir, { recursive: true });
-      }
-    } catch (error) {
-      this.logger.warn('Failed to clean up temp directory:', error);
-    }
-    
+
+    // The temp directory is shared with the CEP panel and persists across restarts.
     this.logger.info('Adobe Premiere Pro bridge cleaned up');
   }
 } 

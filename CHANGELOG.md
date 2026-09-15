@@ -4,6 +4,13 @@ All notable changes are documented here. Releases use semantic versioning.
 
 ## [Unreleased]
 
+- Without `PREMIERE_TEMP_DIR` the server now uses the same directory as the CEP
+  panel: the `tempDirectory` saved in `~/.premiere-mcp-bridge/config.json`, else
+  `%TEMP%\premiere-mcp-bridge` (`/tmp/premiere-mcp-bridge` on macOS). It used to
+  fall back to a per-session `premiere-bridge-<uuid>` directory the panel never
+  polls, so the Claude Code plugin, which sets no env, reported
+  `bridge_unavailable` with the panel open and started.
+
 ## [1.2.8] - 2026-09-02
 
 - `move_clip_to_track` parks past the last clip on the destination, restores
